@@ -1,0 +1,12 @@
+# PANDA TDR — core dependencies
+crewai==1.15.10          # multi-agent framework (Cowrie / Windows / Reporter crews) + LLM access
+splunk-sdk==2.1.1        # Splunk REST API client (live event pulls)
+pandas==3.0.5            # correlation dataframe joins
+scikit-learn==1.9.0      # interpretable severity decision tree
+python-dotenv==1.2.2     # load credentials / API keys from .env
+
+# Development
+pytest==9.1.1            # unit tests (tests/)
+
+# NOTE: the standalone Cowrie log parser is a separate local package,
+# installed editable:  pip install -e ../cowrie_detector
