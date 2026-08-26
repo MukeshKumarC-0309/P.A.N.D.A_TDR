@@ -41,6 +41,7 @@ from panda_tdr.detections import (
     detect_failed_login_attacks,
     detect_multistage_chains,
 )
+from panda_tdr.polish_guard import polish_rejection_reason
 from panda_tdr.reporter import (
     render_account_creation_alert,
     render_alert,
@@ -77,13 +78,26 @@ def polish(card):
     return str(crew.kickoff(inputs={"card": card}))
 
 
+def polish_guarded(card, severity):
+    """Polish the deterministic card, but SHIP THE CARD if the polish drifts.
+
+    The integrity guard rejects a polish that adds LaTeX/math notation, drops the
+    authoritative severity, or drops/invents an IP — the concrete ways an LLM
+    rewrite can mislead. On rejection the deterministic card (always correct) is
+    returned instead, so a fabricated fact can never reach an alert.
+    """
+    polished = polish(card)
+    reason = polish_rejection_reason(card, polished, severity)
+    if reason:
+        print(f"[!] polish rejected ({reason}); shipping the deterministic card.")
+        return card
+    return polished
+
+
 def emit(label, report, severity):
-    """Print one polished alert with the deterministic severity as authoritative,
-    plus the honesty guard (the polished prose must still state the severity)."""
+    """Print one alert with the deterministic severity as authoritative."""
     print(f"===== {label}  [severity={severity}] =====")
     print(report)
-    if severity.lower() not in report.lower():
-        print(f"[!] WARNING: polished text did not clearly state severity '{severity}'.")
     print()
 
 
@@ -112,7 +126,7 @@ def main():
     print(f"[*] Correlated identities: {len(inputs)}")
     for n, inp in enumerate(inputs, 1):
         severity, _ = score(inp, clf)               # deterministic = authoritative
-        report = polish(render_alert(inp, clf))      # LLM polishes the honest card
+        report = polish_guarded(render_alert(inp, clf), severity)
         emit(f"CORRELATION ALERT {n}/{len(inputs)}", report, severity)
 
     # 3) STANDALONE detections (single-source: 4625 brute-force / password-spray).
@@ -123,7 +137,7 @@ def main():
     print(f"[*] Failed-login detections: {len(detections)}")
     for n, det in enumerate(detections, 1):
         severity = assess_severity(det)              # deterministic = authoritative
-        report = polish(render_detection_alert(det))  # same LLM polish path
+        report = polish_guarded(render_detection_alert(det), severity)
         emit(f"{det.detection_type.upper()} DETECTION {n}/{len(detections)}", report, severity)
 
     # 4) ACCOUNT-CREATION detections (4720). System/OS-created accounts are
@@ -131,7 +145,7 @@ def main():
     creations = detect_account_creations(creation_rows)
     print(f"[*] Account-creation detections: {len(creations)}")
     for n, det in enumerate(creations, 1):
-        report = polish(render_account_creation_alert(det))  # same LLM polish path
+        report = polish_guarded(render_account_creation_alert(det), det.severity)
         emit(f"ACCOUNT-CREATION DETECTION {n}/{len(creations)}", report, det.severity)
 
     # 5) MULTI-STAGE kill chains (failed -> success -> persistence). Stitches the
@@ -140,7 +154,7 @@ def main():
     chains = detect_multistage_chains(windows, successes, creations)
     print(f"[*] Multi-stage chains: {len(chains)}")
     for n, chain in enumerate(chains, 1):
-        report = polish(render_chain_alert(chain))  # same LLM polish path
+        report = polish_guarded(render_chain_alert(chain), chain.severity)
         emit(f"MULTI-STAGE CHAIN {n}/{len(chains)}", report, chain.severity)
 
     if not inputs and not detections and not creations and not chains:
