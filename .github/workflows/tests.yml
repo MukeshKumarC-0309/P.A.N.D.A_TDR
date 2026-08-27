@@ -12,10 +12,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The unit tests exercise the pure detection/report/guard logic, which
-      # imports only the standard library — no Splunk, LLM, or API keys needed.
-      # (The full live pipeline needs external services and isn't unit-tested here.)
-      - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
+      # The unit tests exercise the pure detection/correlation/report/guard logic
+      # — no Splunk, LLM, or API keys needed. Only pandas is required (the
+      # correlation join); everything else is standard library. (The full live
+      # pipeline needs external services and isn't unit-tested here.)
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest pandas
       - name: Run unit tests
         run: pytest tests/ -q

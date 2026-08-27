@@ -43,3 +43,24 @@ def polish_rejection_reason(card, polished, severity):
     if fabricated:
         return f"fabricated IP(s): {sorted(fabricated)}"
     return None
+
+
+def guarded_polish(card, severity, polish_fn):
+    """Polish a card safely: the deterministic card is the guaranteed output.
+
+    Returns (text, fallback_reason). `text` is the polished card when it is safe,
+    otherwise the deterministic `card`; `fallback_reason` is None on acceptance,
+    or a short string explaining why the card was shipped instead. Falls back in
+    BOTH directions the LLM layer can go wrong:
+      * the polish call RAISES (dependency down / rate-limited / no key) -> card,
+      * the polish DRIFTS (fails polish_rejection_reason) -> card.
+    So one API hiccup can never crash the run, and a bad rewrite can never ship.
+    """
+    try:
+        polished = polish_fn(card)
+    except Exception as err:  # noqa: BLE001 - any failure must degrade, not crash
+        return card, f"polish failed ({type(err).__name__})"
+    reason = polish_rejection_reason(card, polished, severity)
+    if reason:
+        return card, f"polish rejected ({reason})"
+    return polished, None

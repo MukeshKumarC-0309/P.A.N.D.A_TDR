@@ -1,5 +1,5 @@
 """Unit tests for the LLM-polish integrity guard (backstops the alert cards)."""
-from panda_tdr.polish_guard import polish_rejection_reason
+from panda_tdr.polish_guard import guarded_polish, polish_rejection_reason
 
 # A stand-in deterministic card: severity word + the one true source IP.
 CARD = (
@@ -34,3 +34,24 @@ def test_fabricated_ip_is_rejected():
     polished = "A high-severity brute-force from 10.0.2.3 and 8.8.8.8 with 50 attempts."
     reason = polish_rejection_reason(CARD, polished, "high")
     assert reason is not None and "fabricat" in reason.lower()
+
+
+# --- guarded_polish: degrade, never crash / never ship a bad rewrite --------
+
+def test_guarded_polish_accepts_a_clean_polish():
+    clean = "A high-severity brute-force from 10.0.2.3 with 50 failed logons."
+    text, reason = guarded_polish(CARD, "high", lambda c: clean)
+    assert text == clean and reason is None
+
+
+def test_guarded_polish_falls_back_when_polish_raises():
+    def boom(_card):
+        raise RuntimeError("API down")
+    text, reason = guarded_polish(CARD, "high", boom)
+    assert text == CARD and "failed" in reason  # the deterministic card ships
+
+
+def test_guarded_polish_falls_back_on_drift():
+    drift = "50 attempts $\\ge$ 20 from 10.0.2.3; severity high."  # LaTeX
+    text, reason = guarded_polish(CARD, "high", lambda c: drift)
+    assert text == CARD and "rejected" in reason

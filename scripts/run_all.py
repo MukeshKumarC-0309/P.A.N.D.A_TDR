@@ -41,7 +41,7 @@ from panda_tdr.detections import (
     detect_failed_login_attacks,
     detect_multistage_chains,
 )
-from panda_tdr.polish_guard import polish_rejection_reason
+from panda_tdr.polish_guard import guarded_polish
 from panda_tdr.reporter import (
     render_account_creation_alert,
     render_alert,
@@ -79,19 +79,18 @@ def polish(card):
 
 
 def polish_guarded(card, severity):
-    """Polish the deterministic card, but SHIP THE CARD if the polish drifts.
+    """Polish the deterministic card, but SHIP THE CARD if the polish fails or drifts.
 
-    The integrity guard rejects a polish that adds LaTeX/math notation, drops the
-    authoritative severity, or drops/invents an IP — the concrete ways an LLM
-    rewrite can mislead. On rejection the deterministic card (always correct) is
-    returned instead, so a fabricated fact can never reach an alert.
+    guarded_polish degrades in both directions: if the LLM call raises (API down,
+    rate-limited, no key) or the rewrite drifts (LaTeX, dropped severity,
+    dropped/invented IP), the deterministic card — always correct — ships instead.
+    So one dependency hiccup can't crash the run, and a bad rewrite can't reach an
+    alert.
     """
-    polished = polish(card)
-    reason = polish_rejection_reason(card, polished, severity)
+    text, reason = guarded_polish(card, severity, polish)
     if reason:
-        print(f"[!] polish rejected ({reason}); shipping the deterministic card.")
-        return card
-    return polished
+        print(f"[!] {reason}; shipping the deterministic card.")
+    return text
 
 
 def emit(label, report, severity):
